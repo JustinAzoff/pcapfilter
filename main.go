@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 )
 
@@ -26,13 +27,14 @@ func IPNetToFilterableBytes(n *net.IPNet) []byte {
 	return filter
 }
 
-func Filter(r io.Reader, w io.Writer, fs FilterSpec) (uint64, error) {
+func Filter(r *os.File, w io.Writer, fs FilterSpec) (uint64, error) {
 	packets := uint64(0)
 
-	pr, err := pcapgo.NewReader(r)
+	pr, err := pcap.OpenOfflineFile(r)
 	if err != nil {
 		return 0, err
 	}
+
 	pw := pcapgo.NewWriter(w)
 	pw.WriteFileHeader(65536, layers.LinkTypeEthernet)
 
@@ -47,7 +49,7 @@ func Filter(r io.Reader, w io.Writer, fs FilterSpec) (uint64, error) {
 	}
 
 	for {
-		packetData, captureInfo, err := pr.ReadPacketData()
+		packetData, captureInfo, err := pr.ZeroCopyReadPacketData()
 		if err == io.EOF {
 			break
 		}
