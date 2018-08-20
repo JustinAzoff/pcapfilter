@@ -165,7 +165,7 @@ func (r *Reader) FindPacket(query []byte) (data []byte, ci gopacket.CaptureInfo,
 		if err != nil {
 			return
 		}
-		if packetLength > len(r.blockSlice) {
+		if 16+packetLength > len(r.blockSlice) {
 			n := r.Fill()
 			more = n > 0
 			return
