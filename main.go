@@ -1,21 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"os"
 
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 )
 
-type FilterSpec struct {
-	body []byte
-	ip   string
-}
+type filter []byte
 
 func IPNetToFilterableBytes(n *net.IPNet) []byte {
 	filter := make([]byte, 0, len(n.IP))
@@ -27,10 +22,21 @@ func IPNetToFilterableBytes(n *net.IPNet) []byte {
 	return filter
 }
 
-func Filter(r *os.File, w io.Writer, fs FilterSpec) (uint64, error) {
+func IPToFilter(ip string) (filter, error) {
+	var ipnet *net.IPNet
+	var netBytes []byte
+	_, ipnet, err := net.ParseCIDR(ip)
+	if err != nil {
+		return filter{}, err
+	}
+	netBytes = IPNetToFilterableBytes(ipnet)
+	return filter(netBytes), nil
+}
+
+func Filter(r *os.File, w io.Writer, filters []filter) (uint64, error) {
 	packets := uint64(0)
 
-	pr, err := pcap.OpenOfflineFile(r)
+	pr, err := NewReader(r)
 	if err != nil {
 		return 0, err
 	}
@@ -38,30 +44,13 @@ func Filter(r *os.File, w io.Writer, fs FilterSpec) (uint64, error) {
 	pw := pcapgo.NewWriter(w)
 	pw.WriteFileHeader(65536, layers.LinkTypeEthernet)
 
-	var ipnet *net.IPNet
-	var netBytes []byte
-	if fs.ip != "" {
-		_, ipnet, err = net.ParseCIDR(fs.ip)
-		if err != nil {
-			return 0, err
-		}
-		netBytes = IPNetToFilterableBytes(ipnet)
-	}
-
 	for {
-		packetData, captureInfo, err := pr.ZeroCopyReadPacketData()
+		packetData, captureInfo, err := pr.ReadPacketData(filters[0])
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return packets, err
-		}
-
-		if len(fs.body) > 0 && !bytes.Contains(packetData, fs.body) {
-			continue
-		}
-		if len(netBytes) > 0 && !bytes.Contains(packetData, netBytes) {
-			continue
 		}
 
 		err = pw.WritePacket(captureInfo, packetData)
@@ -74,17 +63,21 @@ func Filter(r *os.File, w io.Writer, fs FilterSpec) (uint64, error) {
 	return packets, nil
 }
 
-func parseQuery(query []string) (FilterSpec, error) {
-	fs := FilterSpec{}
+func parseQuery(query []string) ([]filter, error) {
+	var filters []filter
 	for i, s := range query {
 		if i > 0 && query[i-1] == "body" {
-			fs.body = []byte(s)
+			filters = append(filters, filter(s))
 		}
 		if i > 0 && query[i-1] == "ip" {
-			fs.ip = s
+			ip, err := IPToFilter(s)
+			if err != nil {
+				return filters, err
+			}
+			filters = append(filters, ip)
 		}
 	}
-	return fs, nil
+	return filters, nil
 }
 
 func main() {
