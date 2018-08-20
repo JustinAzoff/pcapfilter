@@ -49,8 +49,8 @@ int main(int argc, char **argv)
 
     struct pcap_pkthdr hdr;
     const u_char *packet;
+    int f;
 
-    int i;
     if (argc < 3) {
         fprintf(stderr, "Usage: %s in.pcap out.pcap [filters]\n", argv[0]);
         return 1;
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
         if(packet==NULL)
             break;
         if (hdr.len) {
-            for(int f=0; f< num_filters; f++) {
+            for(f=0; f< num_filters; f++) {
                 if(memmem(packet, hdr.len, filters[f].bytes, filters[f].len) == NULL)
                     goto next;
             }
