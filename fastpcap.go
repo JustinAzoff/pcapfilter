@@ -170,7 +170,7 @@ func (r *Reader) FindPacket(query []byte) (data []byte, ci gopacket.CaptureInfo,
 			more = n > 0
 			return
 		}
-		if bytes.Contains(r.blockSlice[16:packetLength], query) {
+		if bytes.Contains(r.blockSlice[16:packetLength+16], query) {
 			//log.Printf("Pattern WAS found in packet %d\n", r.pnum)
 			ci, err := r.readPacketHeader()
 			if err != nil {
