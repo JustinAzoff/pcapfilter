@@ -140,12 +140,11 @@ func (r *Reader) SkipPackets() bool {
 		if packetLength == 0 {
 			return false
 		}
-		if 16+packetLength > len(r.blockSlice) {
+		if headerSize+packetLength > len(r.blockSlice) {
 			n := r.Fill()
 			return n > 0
 		}
-		r.blockSlice = r.blockSlice[16:]           // Skip Header
-		r.blockSlice = r.blockSlice[packetLength:] // Skip Packet
+		r.blockSlice = r.blockSlice[headerSize+packetLength:] // Skip Header+Packet
 		r.pnum++
 	}
 }
@@ -165,12 +164,12 @@ func (r *Reader) FindPacket(query []byte) (data []byte, ci gopacket.CaptureInfo,
 		if err != nil {
 			return
 		}
-		if 16+packetLength > len(r.blockSlice) {
+		if headerSize+packetLength > len(r.blockSlice) {
 			n := r.Fill()
 			more = n > 0
 			return
 		}
-		if bytes.Contains(r.blockSlice[16:packetLength+16], query) {
+		if bytes.Contains(r.blockSlice[headerSize:packetLength+headerSize], query) {
 			//log.Printf("Pattern WAS found in packet %d\n", r.pnum)
 			ci, err := r.readPacketHeader()
 			if err != nil {
@@ -180,8 +179,7 @@ func (r *Reader) FindPacket(query []byte) (data []byte, ci gopacket.CaptureInfo,
 			r.blockSlice = r.blockSlice[packetLength:] // Skip Packet
 			return data, ci, false, nil
 		}
-		r.blockSlice = r.blockSlice[16:]           // Skip Header
-		r.blockSlice = r.blockSlice[packetLength:] // Skip Packet
+		r.blockSlice = r.blockSlice[headerSize+packetLength:] // Skip Header+Packet
 		r.pnum++
 	}
 }
@@ -210,7 +208,7 @@ func (r *Reader) ReadPacketData(query []byte) (data []byte, ci gopacket.CaptureI
 	return
 }
 func (r *Reader) getPacketLength() (length int, err error) {
-	if len(r.blockSlice) < 16 {
+	if len(r.blockSlice) < headerSize {
 		return 0, fmt.Errorf("getPacketLength: blockSlice too small?")
 	}
 	length = int(r.byteOrder.Uint32(r.blockSlice[12:16]))
@@ -218,14 +216,14 @@ func (r *Reader) getPacketLength() (length int, err error) {
 }
 
 func (r *Reader) readPacketHeader() (ci gopacket.CaptureInfo, err error) {
-	if len(r.blockSlice) < 16 {
+	if len(r.blockSlice) < headerSize {
 		err = fmt.Errorf("blockSlice too small?")
 		return
 	}
 	ci.Timestamp = time.Unix(int64(r.byteOrder.Uint32(r.blockSlice[0:4])), int64(r.byteOrder.Uint32(r.blockSlice[4:8])*r.nanoSecsFactor)).UTC()
 	ci.CaptureLength = int(r.byteOrder.Uint32(r.blockSlice[8:12]))
 	ci.Length = int(r.byteOrder.Uint32(r.blockSlice[12:16]))
-	r.blockSlice = r.blockSlice[16:]
+	r.blockSlice = r.blockSlice[headerSize:]
 	return
 }
 
