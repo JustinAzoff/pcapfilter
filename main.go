@@ -5,7 +5,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 
+	"github.com/JustinAzoff/pcapfilter/pcap_indexer"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 )
@@ -33,10 +35,10 @@ func IPToFilter(ip string) (filter, error) {
 	return filter(netBytes), nil
 }
 
-func Filter(r *os.File, w io.Writer, filters []filter) (uint64, error) {
+func Filter(r *os.File, ir io.Reader, w io.Writer, filters []filter) (uint64, error) {
 	packets := uint64(0)
 
-	pr, err := NewReader(r)
+	pr, err := pcap_indexer.NewReader(r, ir)
 	if err != nil {
 		return 0, err
 	}
@@ -86,14 +88,16 @@ func parseQuery(query []string) ([]filter, error) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s query < in.pcap > out.pcap\nWhere query is 'body foo' or 'ip 1.2.3.4/32\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s in.pcap out.pcap query\nWhere query is 'body foo' or 'ip 1.2.3.4/32\n", os.Args[0])
 	os.Exit(1)
 }
 func main() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 5 {
 		usage()
 	}
-	fs, err := parseQuery(os.Args[1:])
+	f := os.Args[1]
+	of := os.Args[2]
+	fs, err := parseQuery(os.Args[3:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid query: %v\n", err)
 		usage()
@@ -103,7 +107,36 @@ func main() {
 		usage()
 	}
 
-	pkts, err := Filter(os.Stdin, os.Stdout, fs)
+	infile, err := os.Open(f)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening input: %v\n", err)
+		os.Exit(1)
+	}
+	outfile, err := os.Create(of)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening output: %v\n", err)
+		os.Exit(1)
+	}
+
+	indexFilename := strings.Replace(f, ".pcap", ".idx", 1)
+	if _, err := os.Stat(indexFilename); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Index %s does not exist, creating\n", indexFilename)
+		indexw, err := os.Create(indexFilename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening index for writing: %v\n", err)
+			os.Exit(1)
+		}
+		pcap_indexer.IndexPCAP(infile, indexw, 128*1024)
+		infile.Seek(0, os.SEEK_SET)
+	}
+
+	indexr, err := os.Open(indexFilename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening index: %v\n", err)
+		os.Exit(1)
+	}
+
+	pkts, err := Filter(infile, indexr, outfile, fs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(1)

@@ -15,8 +15,8 @@ func IndexPCAP(r io.Reader, w io.Writer, maxOffset int) error {
 
 	ow := NewIndexWriter(w)
 
-	lastPos := 0
-	pos := 24
+	pos := 0
+	lastPos := pos
 	nextPos := 0
 	pkt := 1
 	for {
