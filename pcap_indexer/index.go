@@ -21,16 +21,48 @@ func NewIndexWriter(w io.Writer) *IndexWriter {
 }
 
 type IndexReader struct {
-	lastOffset int
-	r          io.Reader
+	offsets []uint32
+	offset  int
+	r       io.Reader
+	err     error
 }
 
-func (r *IndexReader) ReadNextOffsetDelta() (uint32, error) {
+func (r *IndexReader) Fill() {
+	for {
+		delta, err := r.readNextOffsetDelta()
+		if err == io.EOF {
+			break
+		}
+		r.offsets = append(r.offsets, delta)
+		if err != nil {
+			r.err = err
+			break
+		}
+	}
+}
+
+func (r *IndexReader) readNextOffsetDelta() (uint32, error) {
 	var delta uint32
 	err := binary.Read(r.r, binary.BigEndian, &delta)
 	return delta, err
 }
 
+func (r *IndexReader) ReadNextOffsetDelta() (uint32, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	if r.offset >= len(r.offsets) {
+		return 0, io.EOF
+	}
+	delta := r.offsets[r.offset]
+	r.offset++
+	return delta, nil
+}
+
 func NewIndexReader(r io.Reader) *IndexReader {
-	return &IndexReader{r: r}
+	indexer := IndexReader{
+		r: r,
+	}
+	indexer.Fill()
+	return &indexer
 }
